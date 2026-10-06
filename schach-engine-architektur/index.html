@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architektur moderner Schach-Engines: 64-Bit Magic Bitboards, Alpha-Beta-Pruning und NNUE-Netzwerke</title>
+  <meta name="description" content="Detaillierte Analyse der Softwarearchitektur moderner Schachengines: 64-Bit Bitboards, Magic Bitboards Hashing, Alpha-Beta-Optimierungen und NNUE-Evaluierung.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header>
+    <a href="../" class="logo">GameTheory.Algorithms</a>
+    <nav>
+      <a href="../schach-engine-architektur/">Schach</a>
+      <a href="../dame-algorithmen-chinook/">Dame</a>
+      <a href="../backgammon-stochastik-faire-wuerfel/">Backgammon</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <article>
+      <div class="meta">Schach-Informatik & Algorithmen · Veröffentlicht am 07. Oktober 2026</div>
+      <h1>Architektur moderner Schach-Engines: 64-Bit Magic Bitboards, Alpha-Beta-Pruning und NNUE-Netzwerke</h1>
+      
+      <p>Seit den Anfängen der Computerschach-Forschung bei Claude Shannon und Alan Turing hat sich die Architektur von Schachengines dramatisch weiterentwickelt. Während frühe Implementierungen auf geschachtelten Arrays und mailbox-basierten 8x8- oder 10x12-Feldern basierten, operieren moderne State-of-the-Art Engines mit dichten 64-Bit-Zustandsrepräsentationen (Bitboards), hocheffizienten Hashing-Verfahren für Schieberfiguren und hybridisierten neuronalen Evaluationsfunktionen (NNUE).</p>
+
+      <h2>1. Topologie des 64-Bit Bitboards</h2>
+      <p>Ein Bitboard bildet die 64 Felder des Schachbretts bitgenau auf eine vorzeichenlose 64-Bit-Ganzzahl (<code>uint64_t</code>) ab. Feld a1 entspricht Bit 0, während h8 durch Bit 63 repräsentiert wird:</p>
+
+      <pre><code>// 64-Bit Schachbrett-Belegung
+Bit 0: a1,  Bit 1: b1,  Bit 2: c1, ..., Bit 7: h1
+Bit 8: a2,  Bit 9: b2,  Bit 10: c2, ..., Bit 15: h2
+...
+Bit 56: a8, Bit 57: b8, Bit 58: c8, ..., Bit 63: h8</code></pre>
+
+      <p>Die gesamte Brettbelegung einer Partei lässt sich in genau sechs Bitboards für Bauern, Springer, Läufer, Türme, Damen und Könige zerlegen. Die Vereinigung aller besetzten Felder ergibt sich durch bitweises ODER:</p>
+
+      <pre><code>uint64_t occupied = pawns | knights | bishops | rooks | queens | king;
+uint64_t empty = ~occupied;</code></pre>
+
+      <p>Auf modernen x86-64- und ARM64-Prozessoren lassen sich Angriffsvektoren von Springern oder Königen durch hardwarebeschleunigte SIMD- oder Bitmanipulations-Instruktionen (z. B. <code>POPCNT</code>, <code>TZCNT</code>, <code>PEXT</code>) in einem einzigen CPU-Taktzyklus evaluieren.</p>
+
+      <h2>2. Schieberfiguren und Magic Bitboards</h2>
+      <p>Während Springersprünge oder Bauernzüge translationsinvariant berechnet werden können, hängt die Reichweite von Läufern, Türmen und Damen von den blockierenden Figuren auf den Strahlen ab. Um die rechenintensive Strahlverfolgung in Schleifen zu vermeiden, etablierte sich das Verfahren der <strong>Magic Bitboards</strong>:</p>
+
+      <pre><code>uint64_t get_rook_attacks(int square, uint64_t occupancy) {
+    occupancy &= rook_masks[square];
+    occupancy *= rook_magics[square];
+    occupancy >>= (64 - rook_shift_bits[square]);
+    return rook_attack_table[square][occupancy];
+}</code></pre>
+
+      <p>Durch die Multiplikation mit einer vorab generierten 64-Bit-Magickonstante und einen anschließenden Rechtsshift werden die relevanten Blockadebits auf einen dichten Index projiziert. Dieser Index erlaubt einen direkten O(1)-Speicherzugriff auf die vorab berechnete Angriffstabelle. Moderne Architekturen mit BMI2-Unterstützung nutzen alternativ die <code>PEXT</code>-Instruktion (Parallel Bit Extract), welche ohne Kollisionssuche perfekte Lookup-Indizes liefert.</p>
+
+      <h2>3. Baumsuche: Alpha-Beta, Null-Move und Quiescence</h2>
+      <p>Der Minimax-Algorithmus mit Alpha-Beta-Pruning bildet das fundamentale Rückgrat der Zugsuche. Bei einem durchschnittlichen Verzweigungsfaktor von ca. 35 Zügen pro Stellung würde eine unoptimierte Tiefensuche exponentiell scheitern. Moderne Systeme implementieren ein komplexes Zusammenspiel heuristischer Beschneidungen:</p>
+
+      <ul>
+        <li><strong>Null-Move Heuristic:</strong> Wenn die Seite am Zug auf ihren Zug verzichtet und der Gegner in reduzierter Tiefe dennoch keine vorteilhafte Stellung erreicht, kann der gesamte Teilbaum verworfen werden (Pruning).</li>
+        <li><strong>Late Move Reductions (LMR):</strong> Züge, die in der Move-Ordering-Hierarchie weit hinten stehen (weder Schläge noch Killer-Züge), werden mit verminderter Tiefe durchsucht.</li>
+        <li><strong>Quiescence Search (Ruhesuche):</strong> Am Ende der regulären Rechentiefe wird die Suche nicht abrupt beendet, um den Horizont-Effekt zu verhindern. Stattdessen werden alle Schlagzüge und scharfen Drohungen bis zu einer statisch stabilen Stellung weiterverfolgt.</li>
+      </ul>
+
+      <h2>4. Neuronale Evaluation: NNUE-Architektur</h2>
+      <p>Die revolutionäre Entwicklung der Stockfish-Architektur (NNUE – Efficiently Updatable Neural Network) ersetzte handgefertigte Stellungsbewertungen durch kompakte flache neuronale Netze. Das Besondere an NNUE ist die inkrementelle Aktualisierung: Verändert sich die Stellung durch einen einzelnen Halbzug, müssen im ersten Layer (üblicherweise eine <code>Feature-Transformer</code>-Schicht mit 768x2 Eingangsknoten) lediglich die Gewichte der bewegten und geschlagenen Figuren addiert bzw. subtrahiert werden, was auf AVX2- und Neon-Registern in Sub-Mikrosekunden gelingt.</p>
+
+      <p>Für moderne Web- und Mobilanwendungen erfordert dies hochoptimierte WebAssembly- und native C/Dart-Engines, wie sie beispielsweise die <a href="https://boardgammon.com/chess/" class="context-link">Boardgammon Chess – moderne Plattform für interaktive Schachanalyse und Online-Partien</a> bereitstellt, um Großmeister-Evaluierungen direkt im Browser latenzfrei auszuführen.</p>
+
+      <h2>Fazit</h2>
+      <p>Die Kombination aus hardwarenaher Bitboard-Arithmetik, asymptotisch optimaler Alpha-Beta-Filterung und SIMD-optimierter neuronaler Inferenz demonstriert die Perfektion moderner Software-Ingenieurkunst im Bereich deterministischer Spiele mit vollständiger Information.</p>
+    </article>
+  </main>
+
+  <footer>
+    <p>&copy; 2026 GameTheory.Algorithms — Unabhängige Forschungsbeiträge zur kombinatorischen Spieltheorie und verteilten Systemen.</p>
+  </footer>
+</body>
+</html>

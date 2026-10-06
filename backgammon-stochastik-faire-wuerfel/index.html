@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stochastische Markov-Entscheidungsprozesse und kryptografisch faire Würfelprotokolle im Backgammon</title>
+  <meta name="description" content="Mathematische Analyse stochastischer Spiele: Erwartungswert-Bäume, absorbierende Markov-Ketten für das Bearoff und kryptografische Commit-Reveal-Würfelsysteme im Backgammon.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header>
+    <a href="../" class="logo">GameTheory.Algorithms</a>
+    <nav>
+      <a href="../schach-engine-architektur/">Schach</a>
+      <a href="../dame-algorithmen-chinook/">Dame</a>
+      <a href="../backgammon-stochastik-faire-wuerfel/">Backgammon</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <article>
+      <div class="meta">Stochastische Prozesse & Kryptografie · Veröffentlicht am 07. Oktober 2026</div>
+      <h1>Stochastische Markov-Entscheidungsprozesse und kryptografisch faire Würfelprotokolle im Backgammon</h1>
+      
+      <p>Während Schach und Dame zur Klasse der deterministischen Nullsummenspiele mit vollständiger Information gehören, führt Backgammon ein fundamentales stochastisches Element ein: Das Werfen zweier sechsseitiger Würfel. Die mathematische Formalisierung dieses Spiels erfordert eine rigorose Modellierung als <strong>Markov-Entscheidungsprozess (MDP)</strong>, die Konstruktion von Expectiminimax-Bäumen und die Implementierung kryptografisch auditierbarer Zufallsquellen.</p>
+
+      <h2>1. Der stochastische Verzweigungsfaktor: 21 Würfelereignisse</h2>
+      <p>Mit zwei sechsseitigen Würfeln existieren 36 gleichwahrscheinliche Permutationen (6 × 6). Da die Reihenfolge der Würfel irrelevant ist, reduzieren sich diese auf 21 makroskopische Würfelkombinationen:</p>
+
+      <ul>
+        <li><strong>15 Nicht-Pasch-Würfe (z. B. 6-5, 4-2):</strong> Auftretenswahrscheinlichkeit jeweils 2/36 ≈ 5,56 %. Beide Zahlen werden separat als Züge ausgeführt.</li>
+        <li><strong>6 Pasch-Würfe (z. B. 6-6, 1-1):</strong> Auftretenswahrscheinlichkeit jeweils 1/36 ≈ 2,78 %. Der geworfene Wert wird viermal ausgeführt.</li>
+      </ul>
+
+      <p>In einem Expectiminimax-Baum wechselt jeder Zugknoten mit einem <strong>Zufallsknoten (Chance Node)</strong> ab, dessen Wert der gewichteten Summe aller 21 Folgeknoten entspricht:</p>
+
+      <pre><code>V(s) = sum_{w in Omega} P(w) * max_{m in LegalMoves(s, w)} V(Trans(s, m))</code></pre>
+
+      <h2>2. Absorbierende Markov-Ketten im Bearoff</h2>
+      <p>Sobald alle 15 Steine eines Spielers im Heimfeld versammelt sind (Bearoff-Phase), entkoppeln sich die Interaktionen mit dem Gegner. Der Spielfluss lässt sich nun exakt als <strong>absorbierende Markov-Kette</strong> abbilden. Der Zustandsraum definiert sich durch die Anzahl der Steine auf den Punkten 1 bis 6:</p>
+
+      <pre><code>Zustandsübergangsmatrix:
+P = [ Q   R ]
+    [ 0   I ]</code></pre>
+
+      <p>Hierbei enthält die Matrix <code>Q</code> die Übergangswahrscheinlichkeiten zwischen noch aktiven Bearoff-Zuständen, während <code>I</code> den terminalen absorbierenden Zustand (alle 15 Steine abgetragen) beschreibt. Die <strong>Fundamentale Matrix</strong> berechnet sich analytisch zu:</p>
+
+      <pre><code>N = (I - Q)^(-1)</code></pre>
+
+      <p>Der Vektor <code>t = N * 1</code> liefert exakt die erwartete Anzahl an Würfen bis zum vollständigen Sieg, was eine präzise mathematische Evaluierung der Verdopplungsentscheidungen (Doubling Cube) ermöglicht.</p>
+
+      <h2>3. Verdopplungscube und Schwellenwert-Theorie</h2>
+      <p>Die Einführung des Verdopplungswürfels transformiert das lineare Spiel in ein optionspreis-analytisches Entscheidungsproblem. Ein Spieler sollte eine Verdopplung annehmen (Take), wenn seine Gewinnwahrscheinlichkeit <code>p</code> den minimalen Break-Even-Punkt übersteigt:</p>
+
+      <pre><code>Equity(Pass) = -1.0
+Equity(Take) = p * (+2) + (1 - p) * (-2) = 4p - 2
+
+4p - 2 >= -1  ==>  4p >= 1  ==>  p >= 0.25 (25 %)</code></pre>
+
+      <p>Unter Berücksichtigung von Gammon-Risiken und dem Cube-Ownership-Wert (dem Recht, später bei 50 % erneut zu verdoppeln) verschiebt sich der reale Take-Punkt typischerweise in den Bereich von 21,5 % bis 23,0 %.</p>
+
+      <h2>4. Kryptografisch beweisbare Fairness: HMAC-SHA256 Commit-Reveal</h2>
+      <p>In digitalen Backgammon-Umgebungen ist das Vertrauen in den Pseudozufallsgenerator (PRNG) von existenzieller Bedeutung. Um jeden Verdacht serverseitiger Manipulation auszuschließen, etablieren moderne Plattformen ein <a href="https://boardgammon.com/fair-dice/" class="context-link">kryptografisch beweisbar faires Würfelprotokoll auf Basis von HMAC-SHA256 Commit-Reveal</a>:</p>
+
+      <ol>
+        <li><strong>Commit-Phase:</strong> Der Server generiert ein kryptografisches Server-Seed <code>S</code> und sendet vor Beginn der Partie den SHA-256 Hash <code>H = SHA-256(S)</code> an den Client. Der Server ist unwiderruflich an diesen Seed gebunden.</li>
+        <li><strong>Client-Entropie:</strong> Der Client generiert einen unabhängigen Client-Seed <code>C</code>, den der Server vorab nicht vorhersagen kann.</li>
+        <li><strong>Würfelberechnung:</strong> Für jeden Wurf <code>k</code> wird der HMAC-SHA256 Wert deterministisch errechnet:
+          <pre><code>Entropy = HMAC-SHA256(ServerSeed, ClientSeed + ":" + Nonce)
+Die1 = (Entropy[0..3] mod 6) + 1
+Die2 = (Entropy[4..7] mod 6) + 1</code></pre>
+        </li>
+        <li><strong>Reveal-Phase:</strong> Nach Abschluss der Partie wird das Klartext-Server-Seed <code>S</code> offengelegt, sodass jeder Spieler die gesamte Würfelsequenz unabhängig kryptografisch verifizieren kann.</li>
+      </ol>
+
+      <h2>Fazit</h2>
+      <p>Backgammon verbindet auf einzigartige Weise stochastische Markov-Dynamiken mit strategischer Risikoallokation. Durch die Implementierung von kryptografischen Commit-Reveal-Protokollen wird mathematische Wahrscheinlichkeitstheorie in transparenter digitaler Software vollendet.</p>
+    </article>
+  </main>
+
+  <footer>
+    <p>&copy; 2026 GameTheory.Algorithms — Unabhängige Forschungsbeiträge zur kombinatorischen Spieltheorie und verteilten Systemen.</p>
+  </footer>
+</body>
+</html>

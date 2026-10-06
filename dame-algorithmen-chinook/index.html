@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mathematische Lösung des 8x8 Damespiels: SWAR-Generatoren und Chinooks 39-Billionen-Stellungen</title>
+  <meta name="description" content="Analyse der mathematischen Lösung von American Checkers durch Jonathan Schaeffer: 32-Bit Bitboards, SWAR-Movegen, Proof-Number-Search und Chinook-Endspieldatenbanken.">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header>
+    <a href="../" class="logo">GameTheory.Algorithms</a>
+    <nav>
+      <a href="../schach-engine-architektur/">Schach</a>
+      <a href="../dame-algorithmen-chinook/">Dame</a>
+      <a href="../backgammon-stochastik-faire-wuerfel/">Backgammon</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <article>
+      <div class="meta">Gelöste Spiele & Endspieldatenbanken · Veröffentlicht am 07. Oktober 2026</div>
+      <h1>Mathematische Lösung des 8x8 Damespiels: SWAR-Generatoren und Chinooks 39-Billionen-Stellungen</h1>
+      
+      <p>Im Jahr 2007 veröffentlichte ein Forschungsteam um Prof. Jonathan Schaeffer an der University of Alberta einen Meilenstein der künstlichen Intelligenz und kombinatorischen Spieltheorie: Den mathematischen Beweis, dass das 8x8 Damespiel (American Checkers / English Draughts) bei beidseitig perfektem Spiel unweigerlich mit einem Remis (Unentschieden) endet. Der Zustandsraum von ca. 5 × 10<sup>20</sup> Positionen wurde durch eine Kombination aus retrograder Analyse und zielgerichteter Proof-Number-Suche vollständig bezwungen.</p>
+
+      <h2>1. Topologie des kompakten 32-Bit Damespiel-Bitboards</h2>
+      <p>Im Gegensatz zum Schachspiel, bei dem alle 64 Felder bespielbar sind, finden die Züge im Damespiel ausschließlich auf den 32 dunklen Feldern des 8x8-Gitters statt. Dies erlaubt eine elegante und hochkompakte Darstellung des gesamten Spielzustands in vorzeichenlosen 32-Bit-Ganzzahlen (<code>uint32_t</code>):</p>
+
+      <pre><code>// 32-Bit Durchnummerierung der dunklen Felder
+Reihe 1:   .   0   .   1   .   2   .   3
+Reihe 2:   4   .   5   .   6   .   7   .
+Reihe 3:   .   8   .   9   .  10   .  11
+Reihe 4:  12   .  13   .  14   .  15   .
+Reihe 5:   .  16   .  17   .  18   .  19
+Reihe 6:  20   .  21   .  22   .  23   .
+Reihe 7:   .  24   .  25   .  26   .  27
+Reihe 8:  28   .  29   .  30   .  31   .</code></pre>
+
+      <p>Durch diese 32-Bit-Topologie kann der Zustand mit vier 32-Bit-Masken vollständig abgebildet werden: <code>black_men</code>, <code>black_kings</code>, <code>white_men</code> und <code>white_kings</code>. Diagonale Verschiebungen korrespondieren direkt mit konstanten Bitshifts um 3, 4 oder 5 Bits, abhängig von der Parität der Reihe.</p>
+
+      <h2>2. SWAR-Parallelismus und verzweigungsfreier Schlagzwang</h2>
+      <p>Eine zentrale Herausforderung im Damespiel ist der zwingende Schlagzwang (Mandatory Capture): Besitzt ein Spieler eine Schlagmöglichkeit, sind reguläre Züge regelwidrig. Um zeitaufwändige bedingte Verzweigungen (Branches) in der CPU zu eliminieren, setzen moderne Hochleistungs-Engines auf SWAR-Verfahren (SIMD Within A Register):</p>
+
+      <pre><code>// Beispiel: Parallele Schlagprüfung nach rechts-oben (ungerade Reihe)
+uint32_t empty = ~(black | white);
+uint32_t white_opponents = white_men | white_kings;
+
+// Potenzielle Zwischenfelder der gegnerischen Figuren
+uint32_t intermediate = (black_men << 4) & white_opponents;
+// Freie Zielfelder hinter dem Gegner
+uint32_t valid_jumps = (intermediate << 4) & empty;</code></pre>
+
+      <p>Mit nur drei Bitweisen Operationen ermittelt der Algorithmus simultan für alle Steine auf dem Brett, ob ein gültiger Einzelschlag existiert. Mehrfachschläge werden rekursiv durch Verkettung von Zwischenmasken generiert, ohne jemals temporäre Objekte auf dem Stack allozieren zu müssen.</p>
+
+      <h2>3. Retrograde Analyse und Chinooks 39-Billionen-Endspieldatenbank</h2>
+      <p>Die Vollendung des Beweises beruhte auf einer gigantischen retrograden Endspieldatenbank. Ausgehend von 1- bis 10-Stein-Konfigurationen berechnete der Supercomputer rückwärts von terminalen Zuständen (Matt oder kein legaler Zug) alle Vorgängerpositionen:</p>
+
+      <ul>
+        <li><strong>Zustandsraum-Komprimierung:</strong> Die 39.271.258.813.439 (39 Billionen) 10-Stein-Stellungen wurden mit Huffman- und Run-Length-Kodierung auf wenige Terabyte komprimiert.</li>
+        <li><strong>Proof-Number Search (PNS):</strong> Von der Ausgangsstellung ausgehend traversierte ein Heuristik-Algorithmus gezielt den Suchbaum und verknüpfte die Spitzen der Eröffnungsvarianten direkt mit den verifizierten Werten der Endspieldatenbank.</li>
+      </ul>
+
+      <h2>4. Moderne Web-Architekturen für Online-Damespiele</h2>
+      <p>Die Ausführung von schlagzwang-konformen Damesystemen in Web- und Mobilumgebungen erfordert reaktive Client-Architekturen mit exakter Validierung. Systeme wie die <a href="https://boardgammon.com/checkers/play/" class="context-link">Boardgammon Checkers – browserbasierte Dame-Engine mit vollständiger Regelunterstützung</a> integrieren diese 32-Bit-Bitboard-Optimierungen und SWAR-Routinen direkt in hochmoderne Flutter- und Web-Canvas-Pipelines, um deterministische Züge ohne Latenzverzögerung zu gewährleisten.</p>
+
+      <h2>Fazit</h2>
+      <p>American Checkers steht als Monument der Informatik für die triumphale Symbiose aus dichter kombinatorischer Datenkompression, bitweiser SWAR-Parallelität und rigoroser mathematischer Deduktion.</p>
+    </article>
+  </main>
+
+  <footer>
+    <p>&copy; 2026 GameTheory.Algorithms — Unabhängige Forschungsbeiträge zur kombinatorischen Spieltheorie und verteilten Systemen.</p>
+  </footer>
+</body>
+</html>
